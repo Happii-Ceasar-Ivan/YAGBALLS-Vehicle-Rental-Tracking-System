@@ -1,0 +1,4 @@
+ModelID,Brand,ModelName,FuelType,Transmission,CategoryID
+1,Toyota,Vios,Gasoline,Automatic,1
+2,Toyota,Innova,Diesel,Automatic,2
+3,Nissan,Urvan NV350,Diesel,Manual,3

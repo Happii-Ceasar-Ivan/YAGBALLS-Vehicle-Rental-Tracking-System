@@ -1,0 +1,4 @@
+RentalID,EmployeeID,CustomerID,VehicleID,PickupBranchID,DropoffBranchID,RentedOn,ExpectedReturn,ActualReturn,StartMileage,EndMileage,Status
+1,3,1,1,1,1,2026-05-01 9:00:00,2026-05-03 9:00:00,2026-05-03 8:30:00,14800,15200,Completed
+2,4,2,2,2,2,2026-06-04 10:00:00,2026-06-07 10:00:00,NULL,42100,NULL,Overdue
+3,3,3,3,1,3,2026-06-07 13:00:00,2026-06-09 13:00:00,NULL,28000,NULL,Active

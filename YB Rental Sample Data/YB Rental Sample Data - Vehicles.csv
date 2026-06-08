@@ -1,0 +1,5 @@
+VehicleID,ModelID,LicensePlate,CurrentMileage,Status,CurrentBranchID
+1,1,NDG1234,15200,Available,1
+2,2,NQC5678,42100,Rented,2
+3,2,NCP9012,28500,Maintenance,1
+4,3,NWD3456,61000,Available,3

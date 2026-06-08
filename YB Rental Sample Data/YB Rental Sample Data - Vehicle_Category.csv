@@ -1,0 +1,4 @@
+CategoryID,CategoryName,DailyRate,OverdueRatePerHour
+1,Economy Sedan,1500.00,150.00
+2,Family SUV,3500.00,300.00
+3,Premium Passenger Van,5000.00,450.00
