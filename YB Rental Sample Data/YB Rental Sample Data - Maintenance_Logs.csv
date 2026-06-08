@@ -1,0 +1,2 @@
+LogID,VehicleID,StartDate,EndDate,Cost,Description,Status
+1,3,2026-06-04 8:00:00,NULL,NULL,"Routine 30,000km PMS checkup and brake pad replacement.",Under Repair
