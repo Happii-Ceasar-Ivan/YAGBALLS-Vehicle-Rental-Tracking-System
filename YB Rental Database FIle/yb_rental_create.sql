@@ -1,7 +1,7 @@
 PRAGMA foreign_keys = off;
 BEGIN TRANSACTION;
 
--- Branches --
+-- Branches
 CREATE TABLE Branches (
     BranchID      INTEGER        PRIMARY KEY AUTOINCREMENT
                                  UNIQUE
@@ -14,7 +14,7 @@ CREATE TABLE Branches (
     Phone         VARCHAR (20)   NOT NULL
 );
 
--- Customers --
+-- Customers
 CREATE TABLE Customers (
     CustomerID     INTEGER       PRIMARY KEY AUTOINCREMENT
                                  UNIQUE
@@ -31,7 +31,7 @@ CREATE TABLE Customers (
                                  DEFAULT (1) 
 );
 
--- Damage Reports --
+-- Damage Reports
 CREATE TABLE Damage_Reports (
     ReportID            INTEGER         PRIMARY KEY AUTOINCREMENT
                                         UNIQUE
@@ -44,7 +44,7 @@ CREATE TABLE Damage_Reports (
     Status              VARCHAR (20)    NOT NULL
 );
 
--- Employees --
+-- Employees
 CREATE TABLE Employees (
     EmployeeID   INTEGER       PRIMARY KEY AUTOINCREMENT
                                UNIQUE
@@ -59,12 +59,12 @@ CREATE TABLE Employees (
     SupervisorID INT           REFERENCES Employees (EmployeeID) 
 );
 
--- Maintenance Logs --
+-- Maintenance Logs
 CREATE TABLE Maintenance_Logs (
     LogID       INTEGER         PRIMARY KEY AUTOINCREMENT
                                 NOT NULL
                                 UNIQUE,
-    VechileID   INT             REFERENCES Vehicles (VehicleID) 
+    VehicleID   INT             REFERENCES Vehicles (VehicleID) 
                                 NOT NULL,
     StartDate   DATETIME        NOT NULL,
     EndDate     DATETIME,
@@ -73,7 +73,7 @@ CREATE TABLE Maintenance_Logs (
     Status      VARCHAR (20)    NOT NULL
 );
 
--- Payments --
+-- Payments
 CREATE TABLE Payments (
     PaymentID     INTEGER         PRIMARY KEY AUTOINCREMENT
                                   UNIQUE
@@ -88,7 +88,7 @@ CREATE TABLE Payments (
     PaymentMethod VARCHAR (30)    NOT NULL
 );
 
--- Rentals ==
+-- Rentals
 CREATE TABLE Rentals (
     RentalID       INTEGER      PRIMARY KEY AUTOINCREMENT
                                 UNIQUE
@@ -111,7 +111,7 @@ CREATE TABLE Rentals (
     Status         VARCHAR (20) NOT NULL
 );
 
--- Vehicle Categories --
+-- Vehicle Categories
 CREATE TABLE Vehicle_Categories (
     CategoryID         INTEGER         PRIMARY KEY AUTOINCREMENT
                                        UNIQUE
@@ -121,7 +121,7 @@ CREATE TABLE Vehicle_Categories (
     OverdueRatePerHour DECIMAL (10, 2) NOT NULL
 );
 
--- Vehicle Models -- 
+-- Vehicle Models
 CREATE TABLE Vehicle_Models (
     ModelID      INTEGER        PRIMARY KEY AUTOINCREMENT
                                 UNIQUE
@@ -134,7 +134,7 @@ CREATE TABLE Vehicle_Models (
                                 NOT NULL
 );
 
--- Vehicles --
+-- Vehicles
 CREATE TABLE Vehicles (
     VehicleID       INTEGER      PRIMARY KEY AUTOINCREMENT
                                  UNIQUE
