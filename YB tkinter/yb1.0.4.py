@@ -218,13 +218,24 @@ def load_table(name):
     for row in tree.get_children():
         tree.delete(row)
 
-# ── PLACEHOLDER DB (REMOVE IF INSERTING DB) ──
-    for i in range(1, 6):
-        tree.insert("", "end", values=tuple(
-            i if j == 0 else "Value" for j in range(len(cols))
-        ))
-
-    records_label.configure(text=f"5 Records Found.  |  {name}")
+    import sqlite3
+    import os
+    db_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "YB Rental Database FIle", "yb_rental.db")
+    try:
+        conn = sqlite3.connect(db_path)
+        cursor = conn.cursor()
+        
+        # Handle the typo in the SQL schema for Vehicles
+        query_cols = [c if c != "CurrentMileage" else "CurrentMilieage" for c in cols]
+        
+        cursor.execute(f"SELECT {', '.join(query_cols)} FROM {name}")
+        rows = cursor.fetchall()
+        for row in rows:
+            tree.insert("", "end", values=row)
+        conn.close()
+        records_label.configure(text=f"{len(rows)} Records Found.  |  {name}")
+    except sqlite3.Error as e:
+        records_label.configure(text=f"Error loading {name}: {e}")
 
 # ── SIDEBAR BUTTONS ──
 table_buttons = []
