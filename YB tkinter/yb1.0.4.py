@@ -2,6 +2,17 @@ import customtkinter as ctk
 from tkinter import ttk
 import tkinter as tk
 from PIL import Image
+import sys
+import os
+
+def resource_path(relative_path):
+    """ Get absolute path to resource, works for dev and for PyInstaller """
+    try:
+        # PyInstaller creates a temp folder and stores path in _MEIPASS
+        base_path = sys._MEIPASS
+    except Exception:
+        base_path = os.path.abspath(".")
+    return os.path.join(base_path, relative_path)
 
 ctk.set_appearance_mode("dark")
 ctk.set_default_color_theme("blue")
@@ -39,8 +50,8 @@ app.minsize(1280, 720)
 app.maxsize(1280, 720)
 app.configure(fg_color=BG)
 
-logo_img_large = ctk.CTkImage(Image.open("yblogo.png"), size=(220, 88))
-logo_img_small = ctk.CTkImage(Image.open("yblogo.png"), size=(80, 32))
+logo_img_large = ctk.CTkImage(Image.open(resource_path("yblogo.png")), size=(220, 88))
+logo_img_small = ctk.CTkImage(Image.open(resource_path("yblogo.png")), size=(80, 32))
 
 # ════════════════════════════════════════
 #  SCREENS
@@ -267,6 +278,11 @@ def show_edit():
 def show_main_from_edit():
     edit_frame.place_forget()
     main_frame.place(x=0, y=0, relwidth=1, relheight=1)
+    
+    table_str = records_label.cget("text")
+    if "|" in table_str:
+        table_name = table_str.split("|")[-1].strip()
+        load_table(table_name)
 
 # ── EDIT NAVBAR ──
 edit_navbar = ctk.CTkFrame(edit_frame, height=48, fg_color=SURFACE, corner_radius=0)
@@ -365,12 +381,44 @@ status_label = ctk.CTkLabel(edit_bottom, text="Record is saved in the database."
                              text_color=TEXT_DIM, font=("Arial", 11))
 status_label.pack(side="left", padx=12)
 
+def save_record():
+    import sqlite3
+    import os
+    table_str = records_label.cget("text")
+    if "|" not in table_str: return
+    table_name = table_str.split("|")[-1].strip()
+        
+    cols = TABLE_COLUMNS.get(table_name, ())
+    if not cols: return
+    
+    pk_val = edit_entries[cols[0]].get()
+    
+    query_cols = [c if c != "CurrentMileage" else "CurrentMilieage" for c in cols]
+    update_cols = query_cols[1:]
+    
+    set_clause = ", ".join([f"{c} = ?" for c in update_cols])
+    values = [edit_entries[col].get() for col in cols[1:]]
+    values.append(pk_val)
+    
+    db_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "YB Rental Database FIle", "yb_rental.db")
+    try:
+        conn = sqlite3.connect(db_path)
+        cursor = conn.cursor()
+        cursor.execute(f"UPDATE {table_name} SET {set_clause} WHERE {query_cols[0]} = ?", values)
+        conn.commit()
+        conn.close()
+        status_label.configure(text="Record saved successfully!", text_color="#3D7BFF")
+    except sqlite3.Error as e:
+        status_label.configure(text=f"Error saving: {e}", text_color=DANGER)
+
 for label, color in [("Delete", DANGER), ("Paste", PANEL),
                       ("Copy", PANEL), ("Save", ACCENT)]:
-    ctk.CTkButton(edit_bottom, text=label, width=90, height=28,
+    btn = ctk.CTkButton(edit_bottom, text=label, width=90, height=28,
                   fg_color=color, text_color=TEXT,
                   hover_color=BORDER, corner_radius=6,
-                  font=("Arial", 11)).pack(side="right", padx=4, pady=6)
+                  font=("Arial", 11),
+                  command=lambda l=label: save_record() if l == "Save" else None)
+    btn.pack(side="right", padx=4, pady=6)
 
 # ── WIRE EDIT BUTTON ──
 edit_record_btn.configure(command=show_edit)
