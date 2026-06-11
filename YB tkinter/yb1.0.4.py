@@ -14,6 +14,20 @@ def resource_path(relative_path):
         base_path = os.path.abspath(".")
     return os.path.join(base_path, relative_path)
 
+def get_db_path():
+    """ Determine the database path robustly for both script and .exe modes """
+    if getattr(sys, 'frozen', False):
+        # Running as compiled executable
+        base_dir = os.path.dirname(sys.executable)
+        # If the exe is inside a "dist" folder, go up two levels
+        if os.path.basename(base_dir).lower() == 'dist':
+            return os.path.join(base_dir, "..", "..", "YB Rental Database FIle", "yb_rental.db")
+        else:
+            return os.path.join(base_dir, "..", "YB Rental Database FIle", "yb_rental.db")
+    else:
+        # Running as a python script
+        return os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "YB Rental Database FIle", "yb_rental.db")
+
 ctk.set_appearance_mode("dark")
 ctk.set_default_color_theme("blue")
 
@@ -230,8 +244,7 @@ def load_table(name):
         tree.delete(row)
 
     import sqlite3
-    import os
-    db_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "YB Rental Database FIle", "yb_rental.db")
+    db_path = get_db_path()
     try:
         conn = sqlite3.connect(db_path)
         cursor = conn.cursor()
@@ -400,7 +413,7 @@ def save_record():
     values = [edit_entries[col].get() for col in cols[1:]]
     values.append(pk_val)
     
-    db_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "YB Rental Database FIle", "yb_rental.db")
+    db_path = get_db_path()
     try:
         conn = sqlite3.connect(db_path)
         cursor = conn.cursor()
