@@ -1,7 +1,12 @@
+--
+-- File generated with SQLiteStudio v3.4.21 on Sat Jun 13 20:49:09 2026
+--
+-- Text encoding used: System
+--
 PRAGMA foreign_keys = off;
 BEGIN TRANSACTION;
 
--- Branches
+-- Table: Branches
 CREATE TABLE Branches (
     BranchID      INTEGER        PRIMARY KEY AUTOINCREMENT
                                  UNIQUE
@@ -14,7 +19,7 @@ CREATE TABLE Branches (
     Phone         VARCHAR (20)   NOT NULL
 );
 
--- Customers
+-- Table: Customers
 CREATE TABLE Customers (
     CustomerID     INTEGER       PRIMARY KEY AUTOINCREMENT
                                  UNIQUE
@@ -31,7 +36,7 @@ CREATE TABLE Customers (
                                  DEFAULT (1) 
 );
 
--- Damage Reports
+-- Table: Damage_Reports
 CREATE TABLE Damage_Reports (
     ReportID            INTEGER         PRIMARY KEY AUTOINCREMENT
                                         UNIQUE
@@ -44,7 +49,7 @@ CREATE TABLE Damage_Reports (
     Status              VARCHAR (20)    NOT NULL
 );
 
--- Employees
+-- Table: Employees
 CREATE TABLE Employees (
     EmployeeID   INTEGER       PRIMARY KEY AUTOINCREMENT
                                UNIQUE
@@ -59,7 +64,7 @@ CREATE TABLE Employees (
     SupervisorID INT           REFERENCES Employees (EmployeeID) 
 );
 
--- Maintenance Logs
+-- Table: Maintenance_Logs
 CREATE TABLE Maintenance_Logs (
     LogID       INTEGER         PRIMARY KEY AUTOINCREMENT
                                 NOT NULL
@@ -73,7 +78,7 @@ CREATE TABLE Maintenance_Logs (
     Status      VARCHAR (20)    NOT NULL
 );
 
--- Payments
+-- Table: Payments
 CREATE TABLE Payments (
     PaymentID     INTEGER         PRIMARY KEY AUTOINCREMENT
                                   UNIQUE
@@ -88,32 +93,32 @@ CREATE TABLE Payments (
     PaymentMethod VARCHAR (30)    NOT NULL
 );
 
--- Rentals
+-- Table: Rentals
 CREATE TABLE Rentals (
-    RentalID       INTEGER      PRIMARY KEY AUTOINCREMENT
-                                UNIQUE
-                                NOT NULL,
-    EmployeeID     INT          REFERENCES Employees (EmployeeID) 
-                                NOT NULL,
-    CustomerID     INT          REFERENCES Customers (CustomerID) 
-                                NOT NULL,
-    VehicleID      INT          REFERENCES Vehicles (VehicleID) 
-                                NOT NULL,
-    PickUpBranchID INT          REFERENCES Branches (BranchID) 
-                                NOT NULL,
-    DropOffBranch  INT          REFERENCES Branches (BranchID) 
-                                NOT NULL,
-    RentedOn       DATETIME     NOT NULL,
-    ExpectedReturn DATETIME     NOT NULL,
-    ActualReturn   DATETIME,
-    StartMileage   INT          NOT NULL,
-    EndMileage     INT,
-    Status         VARCHAR (20) NOT NULL
+    RentalID        INTEGER      PRIMARY KEY AUTOINCREMENT
+                                 UNIQUE
+                                 NOT NULL,
+    EmployeeID      INT          REFERENCES Employees (EmployeeID) 
+                                 NOT NULL,
+    CustomerID      INT          REFERENCES Customers (CustomerID) 
+                                 NOT NULL,
+    VehicleID       INT          REFERENCES Vehicles (VehicleID) 
+                                 NOT NULL,
+    PickUpBranchID  INT          REFERENCES Branches (BranchID) 
+                                 NOT NULL,
+    DropOffBranchID INT          REFERENCES Branches (BranchID),
+    RentedOn        DATETIME     NOT NULL,
+    ExpectedReturn  DATETIME     NOT NULL,
+    ActualReturn    DATETIME,
+    StartMileage    INT          NOT NULL,
+    EndMileage      INT,
+    Status          VARCHAR (20) NOT NULL
+                                 DEFAULT Active
 );
 
--- Vehicle Categories
+-- Table: Vehicle_Categories
 CREATE TABLE Vehicle_Categories (
-    CategoryID         INTEGER         PRIMARY KEY AUTOINCREMENT
+    CategoryID         INTEGER         PRIMARY KEY
                                        UNIQUE
                                        NOT NULL,
     CategoryName       NVARCHAR (50)   NOT NULL,
@@ -121,7 +126,7 @@ CREATE TABLE Vehicle_Categories (
     OverdueRatePerHour DECIMAL (10, 2) NOT NULL
 );
 
--- Vehicle Models
+-- Table: Vehicle_Models
 CREATE TABLE Vehicle_Models (
     ModelID      INTEGER        PRIMARY KEY AUTOINCREMENT
                                 UNIQUE
@@ -134,7 +139,7 @@ CREATE TABLE Vehicle_Models (
                                 NOT NULL
 );
 
--- Vehicles
+-- Table: Vehicles
 CREATE TABLE Vehicles (
     VehicleID       INTEGER      PRIMARY KEY AUTOINCREMENT
                                  UNIQUE
@@ -143,7 +148,7 @@ CREATE TABLE Vehicles (
                                  NOT NULL,
     LicensePlate    VARCHAR (20) NOT NULL
                                  UNIQUE,
-    CurrentMilieage INT          NOT NULL,
+    CurrentMileage  INT          NOT NULL,
     Status          VARCHAR (20) NOT NULL,
     CurrentBranchID INT          REFERENCES Branches (BranchID) 
                                  NOT NULL
