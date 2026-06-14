@@ -527,6 +527,10 @@
    'PYMODULE'),
   ('dataclasses', 'C:\\Python314\\Lib\\dataclasses.py', 'PYMODULE'),
   ('datetime', 'C:\\Python314\\Lib\\datetime.py', 'PYMODULE'),
+  ('db_mapper',
+   'D:\\YB RENTALS\\YAGBALLS-Vehicle-Rental-Tracking-System\\YB '
+   'tkinter\\db_mapper.py',
+   'PYMODULE'),
   ('decimal', 'C:\\Python314\\Lib\\decimal.py', 'PYMODULE'),
   ('difflib', 'C:\\Python314\\Lib\\difflib.py', 'PYMODULE'),
   ('dis', 'C:\\Python314\\Lib\\dis.py', 'PYMODULE'),

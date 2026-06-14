@@ -4,6 +4,9 @@ import tkinter as tk
 from PIL import Image
 import sys
 import os
+import sqlite3
+import time
+import db_mapper
 
 def resource_path(relative_path):
     """ Get absolute path to resource, works for dev and for PyInstaller """
@@ -21,12 +24,13 @@ def get_db_path():
         base_dir = os.path.dirname(sys.executable)
         # If the exe is inside a "dist" folder, go up two levels
         if os.path.basename(base_dir).lower() == 'dist':
-            return os.path.join(base_dir, "..", "..", "YB Rental Database FIle", "yb_rental.db")
+            path = os.path.join(base_dir, "..", "..", "YB Rental Database FIle", "yb_rental.db")
         else:
-            return os.path.join(base_dir, "..", "YB Rental Database FIle", "yb_rental.db")
+            path = os.path.join(base_dir, "..", "YB Rental Database FIle", "yb_rental.db")
     else:
         # Running as a python script
-        return os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "YB Rental Database FIle", "yb_rental.db")
+        path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "YB Rental Database FIle", "yb_rental.db")
+    return os.path.abspath(path)
 
 ctk.set_appearance_mode("dark")
 ctk.set_default_color_theme("blue")
@@ -42,16 +46,16 @@ TEXT_DIM = "#7A8299"
 DANGER   = "#E84040"
 
 TABLE_COLUMNS = {
-    "Branches":           ("BranchID", "BranchName", "City", "Province", "Phone"),
-    "Vehicle_Categories": ("CategoryID", "CategoryName", "DailyRate", "OverdueRatePerHour"),
-    "Vehicle_Models":     ("ModelID", "Brand", "ModelName", "FuelType", "Transmission"),
-    "Vehicles":           ("VehicleID", "LicensePlate", "CurrentMileage", "Status", "CurrentBranchID"),
-    "Customers":          ("CustomerID", "FirstName", "LastName", "Email", "Phone"),
-    "Rentals":            ("RentalID", "CustomerID", "VehicleID", "RentedOn", "Status"),
-    "Payments":           ("PaymentID", "RentalID", "PaidOn", "TotalAmount", "PaymentMethod"),
-    "Maintenance_Logs":   ("LogID", "VehicleID", "StartDate", "EndDate", "Status"),
-    "Damage_Reports":     ("ReportID", "RentalID", "IncidentDate", "EstimatedRepairCost", "Status"),
-    "Employees":          ("EmployeeID", "FirstName", "LastName", "BranchID", "SupervisorID"),
+    "Branches":           ("Branch ID", "Branch Name", "Street", "Barangay", "City", "Province", "Phone"),
+    "Vehicle_Categories": ("Category ID", "Category Name", "Daily Rate", "Overdue Rate Per Hour"),
+    "Vehicle_Models":     ("Model ID", "Brand", "Model Name", "Fuel Type", "Transmission", "Category Name"),
+    "Vehicles":           ("Vehicle ID", "Model", "License Plate", "Current Mileage", "Status", "Current Branch"),
+    "Customers":          ("Customer ID", "Customer Name", "Email", "Phone No.", "License No.", "Is Active?"),
+    "Rentals":            ("Rental ID", "Handled By", "Customer Name", "Vehicle ID", "Pickup Branch", "Dropoff Branch", "RentedOn", "ExpectedReturn", "ActualReturn", "StartMileage", "EndMileage", "Status"),
+    "Payments":           ("Payment ID", "Rental ID", "Paid On", "Base Amount", "Penalty Amount", "Total Amount", "Payment Method"),
+    "Maintenance_Logs":   ("Log ID", "Vehicle ID", "Start Date", "End Date", "Cost", "Description", "Status"),
+    "Damage_Reports":     ("Report ID", "Rental ID", "Incident Date", "Description", "Est. Repair Cost", "Status"),
+    "Employees":          ("Employee ID", "Employee Name", "Email", "Role", "Branch Assigned", "Supervisor Name"),
 }
 
 TABLES = list(TABLE_COLUMNS.keys())
@@ -204,8 +208,19 @@ style.map("Custom.Treeview",
 grid_frame = ctk.CTkFrame(main_content, fg_color=SURFACE, corner_radius=8)
 grid_frame.pack(fill="both", expand=True, pady=(0, 8))
 
+tree_scroll_y = ctk.CTkScrollbar(grid_frame, orientation="vertical")
+tree_scroll_y.pack(side="right", fill="y", pady=1)
+
+tree_scroll_x = ctk.CTkScrollbar(grid_frame, orientation="horizontal")
+tree_scroll_x.pack(side="bottom", fill="x", padx=1)
+
 tree = ttk.Treeview(grid_frame, style="Custom.Treeview",
-                    show="headings", selectmode="browse")
+                    show="headings", selectmode="browse",
+                    yscrollcommand=tree_scroll_y.set,
+                    xscrollcommand=tree_scroll_x.set)
+
+tree_scroll_y.configure(command=tree.yview)
+tree_scroll_x.configure(command=tree.xview)
 tree.pack(fill="both", expand=True, padx=1, pady=1)
 
 # ── BOTTOM BAR ──
@@ -237,29 +252,43 @@ def load_table(name):
     cols = TABLE_COLUMNS.get(name, ("ID", "Value"))
     tree["columns"] = cols
     for col in cols:
-        tree.heading(col, text=col)
-        tree.column(col, width=240, anchor="w", minwidth=80)
+        # Add 2 spaces of padding to the left of the header so it doesn't hug the border
+        tree.heading(col, text=f"  {col}", anchor="w")
+        tree.column(col, width=200, stretch=False, anchor="w", minwidth=80)
 
     for row in tree.get_children():
         tree.delete(row)
 
-    import sqlite3
     db_path = get_db_path()
     try:
-        conn = sqlite3.connect(db_path)
-        cursor = conn.cursor()
+        conn = None
+        # Use a retry loop to prevent "database is locked/unable to open" errors 
+        # caused by Antivirus or Cloud Sync engines scanning the file after changes
+        for attempt in range(10):
+            try:
+                conn = sqlite3.connect(db_path)
+                cursor = conn.cursor()
+                
+                safe_cols = [f'"{col}"' for col in cols]
+                # We prefix 'v_' to use the SQL Views from Arthur
+                # (e.g. v_Vehicles instead of Vehicles) for better formatting
+                view_name = f"v_{name}"
+                query = f"SELECT {', '.join(safe_cols)} FROM {view_name}"
+                
+                cursor.execute(query)
+                rows = cursor.fetchall()
+                break
+            except sqlite3.OperationalError as e:
+                if attempt == 9: raise e
+                time.sleep(0.5)
         
-        # Handle the typo in the SQL schema for Vehicles
-        query_cols = [c if c != "CurrentMileage" else "CurrentMilieage" for c in cols]
-        
-        cursor.execute(f"SELECT {', '.join(query_cols)} FROM {name}")
-        rows = cursor.fetchall()
         for row in rows:
             tree.insert("", "end", values=row)
-        conn.close()
-        records_label.configure(text=f"{len(rows)} Records Found.  |  {name}")
+            
+        if conn: conn.close()
+        records_label.configure(text=f"Showing records for: {name}  |  {len(rows)} total records")
     except sqlite3.Error as e:
-        records_label.configure(text=f"Error loading {name}: {e}")
+        records_label.configure(text=f"Error loading {name} at {db_path}: {e}")
 
 # ── SIDEBAR BUTTONS ──
 table_buttons = []
@@ -294,7 +323,7 @@ def show_main_from_edit():
     
     table_str = records_label.cget("text")
     if "|" in table_str:
-        table_name = table_str.split("|")[-1].strip()
+        table_name = table_str.split("|")[0].replace("Showing records for:", "").strip()
         load_table(table_name)
 
 # ── EDIT NAVBAR ──
@@ -340,7 +369,8 @@ def populate_edit_form():
         return
 
     values = tree.item(selected[0])["values"]
-    table_name = records_label.cget("text").split("|")[-1].strip()
+    table_str = records_label.cget("text")
+    table_name = table_str.split("|")[0].replace("Showing records for:", "").strip()
     cols = TABLE_COLUMNS.get(table_name, ())
 
     # Two-column layout
@@ -395,33 +425,24 @@ status_label = ctk.CTkLabel(edit_bottom, text="Record is saved in the database."
 status_label.pack(side="left", padx=12)
 
 def save_record():
-    import sqlite3
-    import os
     table_str = records_label.cget("text")
     if "|" not in table_str: return
-    table_name = table_str.split("|")[-1].strip()
+    # Extract the table name, for example from "Showing records for: Branches  |  5 total records"
+    table_name = table_str.split("|")[0].replace("Showing records for:", "").strip()
         
     cols = TABLE_COLUMNS.get(table_name, ())
     if not cols: return
     
     pk_val = edit_entries[cols[0]].get()
-    
-    query_cols = [c if c != "CurrentMileage" else "CurrentMilieage" for c in cols]
-    update_cols = query_cols[1:]
-    
-    set_clause = ", ".join([f"{c} = ?" for c in update_cols])
     values = [edit_entries[col].get() for col in cols[1:]]
-    values.append(pk_val)
     
     db_path = get_db_path()
     try:
-        conn = sqlite3.connect(db_path)
-        cursor = conn.cursor()
-        cursor.execute(f"UPDATE {table_name} SET {set_clause} WHERE {query_cols[0]} = ?", values)
-        conn.commit()
-        conn.close()
+        # Use our custom translator to convert the readable view data back into 
+        # the raw hidden IDs needed to update the raw base tables
+        db_mapper.save_record_to_db(db_path, table_name, cols, values, pk_val)
         status_label.configure(text="Record saved successfully!", text_color="#3D7BFF")
-    except sqlite3.Error as e:
+    except Exception as e:
         status_label.configure(text=f"Error saving: {e}", text_color=DANGER)
 
 for label, color in [("Delete", DANGER), ("Paste", PANEL),
