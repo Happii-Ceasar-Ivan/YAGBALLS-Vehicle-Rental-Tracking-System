@@ -1,5 +1,5 @@
 --
--- File generated with SQLiteStudio v3.4.21 on Sat Jun 13 20:45:51 2026
+-- File generated with SQLiteStudio v3.4.21 on Mon Jun 22 22:40:51 2026
 --
 -- Text encoding used: System
 --
@@ -80,9 +80,9 @@ CREATE VIEW v_Payments AS
     SELECT 'PAY-' || PRINTF('%03d', p.PaymentID) AS [Payment ID],
            'RNT-' || PRINTF('%03d', p.PaymentID) AS [Rental ID],
            p.PaidOn AS [Paid On],
-           p.BaseAmount AS [Base Amount],
-           p.PenaltyAmount AS [Penalty Amount],
-           p.TotalAmount AS [Total Amount],
+           PRINTF('%.2f', p.BaseAmount) AS [Base Amount],
+           PRINTF('%.2f', p.PenaltyAmount) AS [Penalty Amount],
+           PRINTF('%.2f', p.TotalAmount) AS [Total Amount],
            p.PaymentMethod AS [Payment Method]
       FROM Payments AS p
            INNER JOIN
