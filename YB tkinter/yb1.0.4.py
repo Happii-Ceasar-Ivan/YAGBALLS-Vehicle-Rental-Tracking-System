@@ -518,48 +518,6 @@ def populate_edit_form(blank=False, duplicate=False):
     form_inner.grid_columnconfigure(0, weight=1)
     form_inner.grid_columnconfigure(2, weight=1)
 
-    # Two-column layout
-    for i, col in enumerate(cols):
-        row = i // 2
-        col_pos = i % 2
-
-        label = ctk.CTkLabel(form_inner, text=col,
-                             font=("Arial", 12), text_color=TEXT_DIM,
-                             anchor="w")
-        label.grid(row=row, column=col_pos * 2, padx=(0, 12),
-                   pady=10, sticky="w")
-
-        val = values[i] if i < len(values) else ""
-
-        # PK fields (first column) are read-only
-        if i == 0:
-            entry = ctk.CTkEntry(form_inner, width=480, height=34,
-                                 fg_color=PANEL, text_color=TEXT_DIM,
-                                 border_color=BORDER, font=("Arial", 12),
-                                 state="disabled")
-        else:
-            entry = ctk.CTkEntry(form_inner, width=480, height=34,
-                                 fg_color=PANEL, text_color=TEXT,
-                                 border_color=BORDER, font=("Arial", 12))
-
-        entry.grid(row=row, column=col_pos * 2 + 1,
-                   padx=(0, 40), pady=10, sticky="ew")
-
-        if i == 0:
-            entry.configure(state="normal")
-            entry.insert(0, str(val))
-            entry.configure(state="disabled")
-        else:
-            entry.insert(0, str(val))
-
-        edit_entries[col] = entry
-
-    # Configure grid columns
-    form_inner.grid_columnconfigure(1, weight=1)
-    form_inner.grid_columnconfigure(3, weight=1)
-    form_inner.grid_columnconfigure(0, weight=1)
-    form_inner.grid_columnconfigure(2, weight=1)
-
 
 # ── EDIT BOTTOM BAR ──
 edit_bottom = ctk.CTkFrame(edit_frame, height=40,
