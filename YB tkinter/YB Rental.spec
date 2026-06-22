@@ -2,7 +2,7 @@
 
 
 a = Analysis(
-    ['yb1.0.4.py'],
+    ['yb1.0.6.py'],
     pathex=[],
     binaries=[],
     datas=[('yblogo.png', '.')],
