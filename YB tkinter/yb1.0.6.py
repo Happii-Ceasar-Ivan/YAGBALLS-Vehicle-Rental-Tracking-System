@@ -324,8 +324,15 @@ def remove_record():
 
 for label, color in [("Remove", DANGER), ("Duplicate", PANEL),
                      ("Add", PANEL), ("Edit", ACCENT)]:
-    cmd = {"Edit": show_edit, "Add": add_record,
-           "Duplicate": duplicate_record, "Remove": remove_record}[label]
+    if label == "Edit":
+        cmd = lambda: show_edit()
+    elif label == "Add":
+        cmd = add_record
+    elif label == "Duplicate":
+        cmd = duplicate_record
+    elif label == "Remove":
+        cmd = remove_record
+
     b = ctk.CTkButton(bottom, text=label, width=90, height=28,
                       fg_color=color, text_color=TEXT,
                       hover_color=BORDER, corner_radius=6,
