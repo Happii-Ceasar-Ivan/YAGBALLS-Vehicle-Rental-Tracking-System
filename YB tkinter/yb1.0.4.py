@@ -252,7 +252,6 @@ def load_table(name):
     cols = TABLE_COLUMNS.get(name, ("ID", "Value"))
     tree["columns"] = cols
     for col in cols:
-        # Add 2 spaces of padding to the left of the header so it doesn't hug the border
         tree.heading(col, text=f"  {col}", anchor="w")
         tree.column(col, width=200, stretch=False, anchor="w", minwidth=80)
 
