@@ -1,6 +1,7 @@
 import customtkinter as ctk
 from tkinter import ttk
 import tkinter as tk
+import tkinter.font as tkfont
 from PIL import Image
 import sys
 import os
@@ -265,19 +266,8 @@ def load_table(name):
     # Configure colors for alternating rows
     tree.tag_configure("odd", background=SURFACE) # "#111318"
     tree.tag_configure("even", background=PANEL)  # "#181C24"
-
-    for col in cols:
-        tree.heading(col, text=col)
-        
-        # Right-align ("e" for east) if monetary, otherwise left-align ("w" for west)
-        if col in monetary_cols:
-            tree.column(col, width=240, anchor="e", minwidth=80)
-        else:
-            tree.column(col, width=240, anchor="w", minwidth=80)
-
     for row in tree.get_children():
         tree.delete(row)
-
 
     db_path = get_db_path()
     try:
@@ -301,11 +291,43 @@ def load_table(name):
             except sqlite3.OperationalError as e:
                 if attempt == 9: raise e
                 time.sleep(0.5)
+
+        # Calculate dynamic widths for each column based on data
+        font = tkfont.Font(family="Arial", size=11)
+        header_font = tkfont.Font(family="Arial", size=10, weight="bold")
         
+        col_widths = {}
+        for i, col in enumerate(cols):
+            max_w = header_font.measure(col) + 40 # 40px padding
+            for row in rows:
+                val = str(row[i]) if row[i] is not None else "None"
+                if col in monetary_cols:
+                    val += "    " # Add padding for width calculation
+                w = font.measure(val) + 40
+                if w > max_w:
+                    max_w = w
+            col_widths[col] = min(max_w, 800) # Cap width at 800px
+
+        # Configure columns with dynamic widths AND stretch to fill empty space
+        for col in cols:
+            tree.heading(col, text=col)
+            # Right-align ("e" for east) if monetary, otherwise left-align ("w" for west)
+            if col in monetary_cols:
+                tree.column(col, width=col_widths[col], stretch=True, anchor="e", minwidth=col_widths[col])
+            else:
+                tree.column(col, width=col_widths[col], stretch=True, anchor="w", minwidth=col_widths[col])
+
         for i, row in enumerate(rows):
+            display_row = []
+            for j, val in enumerate(row):
+                str_val = str(val) if val is not None else "None"
+                if cols[j] in monetary_cols:
+                    str_val += "    " # Pad monetary columns so they don't touch the next column
+                display_row.append(str_val)
+                
             # Assign tag based on odd/even row
             row_tag = "even" if i % 2 == 0 else "odd"
-            tree.insert("", "end", tags=(row_tag,), values=row)
+            tree.insert("", "end", tags=(row_tag,), values=display_row)
             
         if conn: conn.close()
         records_label.configure(text=f"Showing records for: {name}  |  {len(rows)} total records")
@@ -409,6 +431,8 @@ def populate_edit_form():
                    pady=10, sticky="w")
 
         val = values[i] if i < len(values) else ""
+        if isinstance(val, str):
+            val = val.strip()
 
         # PK fields (first column) are read-only
         if i == 0:
