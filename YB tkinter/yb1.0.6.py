@@ -8,6 +8,7 @@ import os
 import sqlite3
 import time
 import db_mapper
+import json
 
 
 def resource_path(relative_path):
@@ -36,6 +37,21 @@ def get_db_path():
         # Running as a python script
         path = os.path.join(os.path.dirname(os.path.abspath(
             __file__)), "..", "YB Rental Database FIle", "yb_rental.db")
+    return os.path.abspath(path)
+
+
+def get_filters_path():
+    """ Determine the filters path robustly for both script and .exe modes """
+    if getattr(sys, 'frozen', False):
+        base_dir = os.path.dirname(sys.executable)
+        if os.path.basename(base_dir).lower() == 'dist':
+            path = os.path.join(base_dir, "..", "..", "Filters")
+        else:
+            path = os.path.join(base_dir, "..", "Filters")
+    else:
+        path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "Filters")
+    if not os.path.exists(path):
+        os.makedirs(path, exist_ok=True)
     return os.path.abspath(path)
 
 
@@ -191,15 +207,216 @@ filter_frame.pack(fill="x", pady=(0, 8))
 filter_top = ctk.CTkFrame(filter_frame, fg_color="transparent")
 filter_top.pack(fill="x", padx=10, pady=8)
 
-for label, color, tcolor in [
-    ("+ Add Condition", PANEL, TEXT_DIM),
-    ("Filter ▾",        PANEL, TEXT_DIM),
-    ("Clear",           PANEL, TEXT_DIM),
-    ("Apply Filter",    ACCENT, TEXT),
-]:
-    ctk.CTkButton(filter_top, text=label, width=110, height=28,
-                  fg_color=color, text_color=tcolor, hover_color=BORDER,
-                  corner_radius=6, font=("Arial", 11)).pack(side="left", padx=4)
+# Condition tracking
+condition_rows = []
+
+def repack_conditions():
+    for i, row in enumerate(condition_rows):
+        row['frame'].pack_forget()
+        row['frame'].pack(fill="x", pady=2)
+        
+        if i == 0:
+            row['logic_menu'].set("")
+            row['logic_menu'].configure(state="disabled")
+        else:
+            row['logic_menu'].configure(state="normal")
+            if row['logic_menu'].get() == "":
+                row['logic_menu'].set("And")
+
+def add_condition_row(selected_attr):
+    if not selected_attr or selected_attr == "Add Condition":
+        return
+    
+    # reset menu back to default text
+    add_condition_var.set("Add Condition")
+
+    row_frame = ctk.CTkFrame(filter_conditions_frame, fg_color="transparent")
+    row_frame.pack(fill="x", pady=2)
+    
+    # Checkbox
+    chk_var = ctk.BooleanVar(value=True)
+    chk = ctk.CTkCheckBox(row_frame, text="", variable=chk_var, width=24)
+    chk.pack(side="left", padx=5)
+
+    def move_up():
+        idx = condition_rows.index(row_data)
+        if idx > 0:
+            condition_rows[idx], condition_rows[idx-1] = condition_rows[idx-1], condition_rows[idx]
+            repack_conditions()
+
+    def move_down():
+        idx = condition_rows.index(row_data)
+        if idx < len(condition_rows) - 1:
+            condition_rows[idx], condition_rows[idx+1] = condition_rows[idx+1], condition_rows[idx]
+            repack_conditions()
+
+    # Up/Down Arrows
+    arrow_frame = ctk.CTkFrame(row_frame, fg_color="transparent")
+    arrow_frame.pack(side="left", padx=5)
+    
+    up_btn = ctk.CTkButton(arrow_frame, text="▲", width=20, height=14, fg_color=PANEL, hover_color=BORDER, command=move_up, font=("Arial", 10))
+    up_btn.pack(side="top", pady=(0, 1))
+    
+    down_btn = ctk.CTkButton(arrow_frame, text="▼", width=20, height=14, fg_color=PANEL, hover_color=BORDER, command=move_down, font=("Arial", 10))
+    down_btn.pack(side="bottom")
+
+    # Logical Operator (Hide for the very first condition visually, or just disable)
+    logic_var = ctk.StringVar(value="And")
+    logic_menu = ctk.CTkOptionMenu(row_frame, values=["And", "Or"], variable=logic_var, width=60, height=28, fg_color=PANEL)
+    if len(condition_rows) == 0:
+        logic_menu.set("")
+        logic_menu.configure(state="disabled")
+    logic_menu.pack(side="left", padx=5)
+
+    # Attribute Label
+    attr_label = ctk.CTkLabel(row_frame, text=selected_attr, width=120, anchor="w", text_color=TEXT)
+    attr_label.pack(side="left", padx=5)
+
+    # Determine numerical columns
+    monetary_cols = {"Daily Rate", "Overdue Rate Per Hour", "Cost", "Base Amount", "Total Amount", "Penalty Amount", "Est. Repair Cost"}
+    is_numerical = "ID" in selected_attr or "Mileage" in selected_attr or "Age" in selected_attr or selected_attr in monetary_cols
+
+    ops = ["Is", "Is Not", "Contains"]
+    if is_numerical:
+        ops = ["Is", "Is Not", ">", "<", ">=", "<="]
+    
+    op_var = ctk.StringVar(value="Is")
+    op_menu = ctk.CTkOptionMenu(row_frame, values=ops, variable=op_var, width=100, height=28, fg_color=PANEL)
+    op_menu.pack(side="left", padx=5)
+
+    # Value Entry
+    val_entry = ctk.CTkEntry(row_frame, height=28, fg_color=PANEL, border_width=1)
+    val_entry.pack(side="left", expand=True, fill="x", padx=5)
+
+    def remove_this():
+        row_frame.destroy()
+        condition_rows.remove(row_data)
+        repack_conditions()
+
+    # Remove button
+    rm_btn = ctk.CTkButton(row_frame, text="X", width=28, height=28, fg_color=DANGER, hover_color="#C03030", command=remove_this)
+    rm_btn.pack(side="left", padx=5)
+
+    row_data = {
+        'frame': row_frame,
+        'chk_var': chk_var,
+        'logic_var': logic_var,
+        'logic_menu': logic_menu,
+        'attribute': selected_attr,
+        'op_var': op_var,
+        'val_entry': val_entry
+    }
+    condition_rows.append(row_data)
+
+def apply_filters():
+    table_str = records_label.cget("text")
+    if "|" not in table_str: return
+    table_name = table_str.split("|")[0].replace("Showing records for:", "").strip()
+
+    where_parts = []
+    params = []
+    
+    first = True
+    for row in condition_rows:
+        if not row['chk_var'].get():
+            continue # skipped if unchecked
+        
+        logic = row['logic_var'].get().upper()
+        if first:
+            logic = ""
+            first = False
+            
+        attr = f'"{row["attribute"]}"'
+        op = row['op_var'].get()
+        val = row['val_entry'].get()
+
+        if op == "Is":
+            sql_op = "="
+            params.append(val)
+        elif op == "Is Not":
+            sql_op = "!="
+            params.append(val)
+        elif op == "Contains":
+            sql_op = "LIKE"
+            params.append(f"%{val}%")
+        else: # >, <, >=, <=
+            sql_op = op
+            params.append(val)
+            
+        where_parts.append(f"{logic} {attr} {sql_op} ?".strip())
+        
+    where_clause = ""
+    if where_parts:
+        where_clause = "WHERE " + " ".join(where_parts)
+        
+    load_table(table_name, where_clause, tuple(params))
+
+def clear_filters():
+    for row in condition_rows:
+        row['frame'].destroy()
+    condition_rows.clear()
+    
+    table_str = records_label.cget("text")
+    if "|" in table_str:
+        table_name = table_str.split("|")[0].replace("Showing records for:", "").strip()
+        load_table(table_name)
+
+def save_filters():
+    filters = []
+    for row in condition_rows:
+        filters.append({
+            "chk": row['chk_var'].get(),
+            "logic": row['logic_var'].get(),
+            "attribute": row["attribute"],
+            "op": row['op_var'].get(),
+            "val": row['val_entry'].get()
+        })
+    from tkinter import filedialog
+    filepath = filedialog.asksaveasfilename(initialdir=get_filters_path(), defaultextension=".json", filetypes=[("JSON files", "*.json")], title="Save Filters")
+    if filepath:
+        with open(filepath, 'w') as f:
+            json.dump(filters, f)
+
+def load_filters():
+    from tkinter import filedialog
+    filepath = filedialog.askopenfilename(initialdir=get_filters_path(), filetypes=[("JSON files", "*.json")], title="Load Filters")
+    if filepath and os.path.exists(filepath):
+        with open(filepath, 'r') as f:
+            filters = json.load(f)
+        
+        # clear existing
+        for row in condition_rows:
+            row['frame'].destroy()
+        condition_rows.clear()
+        
+        for f_data in filters:
+            add_condition_row(f_data["attribute"])
+            last_row = condition_rows[-1]
+            last_row['chk_var'].set(f_data["chk"])
+            last_row['logic_var'].set(f_data["logic"])
+            last_row['op_var'].set(f_data["op"])
+            last_row['val_entry'].insert(0, f_data["val"])
+            
+        apply_filters()
+
+add_condition_var = ctk.StringVar(value="Add Condition")
+add_condition_menu = ctk.CTkOptionMenu(filter_top, values=[], variable=add_condition_var, width=140, height=28, fg_color=PANEL, command=add_condition_row)
+add_condition_menu.pack(side="left", padx=4)
+
+filter_btn = ctk.CTkButton(filter_top, text="Save Filters", width=90, height=28, fg_color=PANEL, text_color=TEXT_DIM, hover_color=BORDER, command=save_filters)
+filter_btn.pack(side="left", padx=4)
+
+load_filter_btn = ctk.CTkButton(filter_top, text="Load Filters", width=90, height=28, fg_color=PANEL, text_color=TEXT_DIM, hover_color=BORDER, command=load_filters)
+load_filter_btn.pack(side="left", padx=4)
+
+clear_btn = ctk.CTkButton(filter_top, text="Clear", width=80, height=28, fg_color=PANEL, text_color=TEXT_DIM, hover_color=BORDER, command=clear_filters)
+clear_btn.pack(side="left", padx=4)
+
+apply_btn = ctk.CTkButton(filter_top, text="Apply Filter", width=100, height=28, fg_color=ACCENT, text_color=TEXT, command=apply_filters)
+apply_btn.pack(side="left", padx=4)
+
+filter_conditions_frame = ctk.CTkScrollableFrame(filter_frame, height=140, fg_color="transparent")
+filter_conditions_frame.pack(fill="x", padx=10, pady=(0,8))
 
 # ── TREEVIEW STYLE ──
 style = ttk.Style()
@@ -342,7 +559,7 @@ for label, color in [("Remove", DANGER), ("Duplicate", PANEL),
 # ── TABLE LOADER ──
 
 
-def load_table(name):
+def load_table(name, where_clause="", query_params=()):
     for btn in table_buttons:
         if btn.cget("text") == name:
             btn.configure(fg_color=ACCENT, text_color=TEXT)
@@ -351,6 +568,9 @@ def load_table(name):
 
     cols = TABLE_COLUMNS.get(name, ("ID", "Value"))
     tree["columns"] = cols
+    
+    # Update filter menu values
+    add_condition_menu.configure(values=list(cols))
 
     # Define which columns contain monetary values
     monetary_cols = {"Daily Rate", "Overdue Rate Per Hour", "Cost", "Base Amount",
@@ -377,9 +597,9 @@ def load_table(name):
                 # We prefix 'v_' to use the SQL Views from Arthur
                 # (e.g. v_Vehicles instead of Vehicles) for better formatting
                 view_name = f"v_{name}"
-                query = f"SELECT {', '.join(safe_cols)} FROM {view_name}"
+                query = f"SELECT {', '.join(safe_cols)} FROM {view_name} {where_clause}"
 
-                cursor.execute(query)
+                cursor.execute(query, query_params)
                 rows = cursor.fetchall()
                 break
             except sqlite3.OperationalError as e:
@@ -469,9 +689,7 @@ def show_main_from_edit():
 
     table_str = records_label.cget("text")
     if "|" in table_str:
-        table_name = table_str.split("|")[0].replace(
-            "Showing records for:", "").strip()
-        load_table(table_name)
+        apply_filters()
 
 
 # ── EDIT NAVBAR ──
