@@ -10,7 +10,8 @@ import sqlite3
 import time
 import db_mapper
 import json
-
+import shutil
+from datetime import datetime
 
 def resource_path(relative_path):
     """ Get absolute path to resource, works for dev and for PyInstaller """
@@ -20,6 +21,44 @@ def resource_path(relative_path):
     except Exception:
         base_path = os.path.abspath(".")
     return os.path.join(base_path, relative_path)
+
+def backup_db():
+    db_path = get_db_path()
+    db_dir = os.path.dirname(db_path)
+    backups_dir = os.path.join(db_dir, "backups")
+    if not os.path.exists(backups_dir):
+        os.makedirs(backups_dir)
+        
+    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    backup_filename = f"yb_rental_backup_{timestamp}.db"
+    backup_path = os.path.join(backups_dir, backup_filename)
+    
+    try:
+        shutil.copy2(db_path, backup_path)
+        messagebox.showinfo("Backup Successful", f"Database safely backed up to:\n{backup_filename}")
+    except Exception as e:
+        messagebox.showerror("Backup Failed", f"Failed to backup database:\n{e}")
+
+def restore_db():
+    from tkinter import filedialog
+    db_path = get_db_path()
+    db_dir = os.path.dirname(db_path)
+    backups_dir = os.path.join(db_dir, "backups")
+    if not os.path.exists(backups_dir):
+        os.makedirs(backups_dir)
+        
+    filepath = filedialog.askopenfilename(initialdir=backups_dir, filetypes=[("SQLite DB", "*.db")], title="Select Backup to Restore")
+    if filepath and os.path.exists(filepath):
+        confirm = messagebox.askyesno("Confirm Restore", "Are you sure you want to restore this backup?\n\nWARNING: All current data will be OVERWRITTEN and cannot be recovered! This is permanent.")
+        if confirm:
+            try:
+                shutil.copy2(filepath, db_path)
+                messagebox.showinfo("Restore Successful", "Database restored successfully! Reloading data...")
+                table_str = records_label.cget("text")
+                if "|" in table_str:
+                    apply_filters()
+            except Exception as e:
+                messagebox.showerror("Restore Failed", f"Failed to restore database:\n{e}")
 
 
 def get_db_path():
@@ -83,6 +122,27 @@ TABLE_COLUMNS = {
 }
 
 TABLES = list(TABLE_COLUMNS.keys())
+
+def validate_inputs(cols, values):
+    """ Validates user inputs. Raises ValueError if validation fails. """
+    numeric_cols = {"Daily Rate", "Overdue Rate Per Hour", "Current Mileage", 
+                    "StartMileage", "EndMileage", "Base Amount", "Penalty Amount", 
+                    "Total Amount", "Cost", "Est. Repair Cost"}
+    phone_cols = {"Phone", "Phone No."}
+    
+    for col, val in zip(cols[1:], values):
+        val_str = str(val).strip()
+        if val_str == "":
+            continue
+        if col in numeric_cols:
+            try:
+                float(val_str)
+            except ValueError:
+                raise ValueError(f"'{col}' must be a valid number.")
+        if col in phone_cols:
+            allowed = set("0123456789+- ()")
+            if not all(c in allowed for c in val_str):
+                raise ValueError(f"'{col}' contains invalid characters. Only numbers and basic symbols are allowed.")
 
 app = ctk.CTk()
 app.title("YB Vehicle Rental System")
@@ -172,15 +232,22 @@ load_btn = ctk.CTkButton(navbar, text="Load Database", width=130, height=32,
                          corner_radius=6, command=show_landing)
 load_btn.pack(side="right", padx=6, pady=8)
 
-edit_record_btn = ctk.CTkButton(navbar, text="Edit Record", width=120, height=32,
-                                fg_color=PANEL, text_color=TEXT_DIM, hover_color=BORDER,
-                                corner_radius=6)
-edit_record_btn.pack(side="right", padx=6, pady=8)
+# Edit Record button removed
 
 db_editor_btn = ctk.CTkButton(navbar, text="Database Editor", width=140, height=32,
                               fg_color=ACCENT, text_color=TEXT, hover_color="#2D6AEF",
                               corner_radius=6)
 db_editor_btn.pack(side="right", padx=6, pady=8)
+
+backup_btn = ctk.CTkButton(navbar, text="Backup DB", width=100, height=32,
+                           fg_color=PANEL, text_color=TEXT_DIM, hover_color=BORDER,
+                           corner_radius=6, command=backup_db)
+backup_btn.pack(side="right", padx=6, pady=8)
+
+restore_btn = ctk.CTkButton(navbar, text="Restore DB", width=100, height=32,
+                            fg_color=PANEL, text_color=TEXT_DIM, hover_color=BORDER,
+                            corner_radius=6, command=restore_db)
+restore_btn.pack(side="right", padx=6, pady=8)
 
 # ════════════════════════════════════════
 #  MAIN SCREEN — BODY
@@ -461,7 +528,7 @@ tree_scroll_x = ctk.CTkScrollbar(grid_frame, orientation="horizontal")
 tree_scroll_x.pack(side="bottom", fill="x", padx=1)
 
 tree = ttk.Treeview(grid_frame, style="Custom.Treeview",
-                    show="headings", selectmode="browse",
+                    show="headings", selectmode="extended",
                     yscrollcommand=tree_scroll_y.set,
                     xscrollcommand=tree_scroll_x.set)
 
@@ -481,9 +548,26 @@ records_label.pack(side="left", padx=12)
 
 
 def add_record():
+    dialog = ctk.CTkInputDialog(text="How many records do you want to add?\n(Leave blank or enter 1 for single add)", title="Add Records")
+    count_str = dialog.get_input()
+    if count_str is None:
+        return
+    
+    count = 1
+    if count_str.strip() != "":
+        try:
+            count = int(count_str.strip())
+        except ValueError:
+            messagebox.showerror("Invalid Input", "Please enter a valid number.")
+            return
+
     main_frame.place_forget()
-    edit_frame.place(x=0, y=0, relwidth=1, relheight=1)
-    populate_edit_form(blank=True)
+    if count > 1:
+        multi_edit_frame.place(x=0, y=0, relwidth=1, relheight=1)
+        populate_multi_edit_form(add_count=count)
+    else:
+        edit_frame.place(x=0, y=0, relwidth=1, relheight=1)
+        populate_edit_form(blank=True)
 
 
 def duplicate_record():
@@ -531,7 +615,6 @@ def remove_record():
     if not selected:
         return
 
-    values = tree.item(selected[0])["values"]
     table_str = records_label.cget("text")
     if "|" not in table_str:
         return
@@ -542,7 +625,7 @@ def remove_record():
         return
 
     pk_col = cols[0]
-    pk_val = values[0]
+    is_multi = len(selected) > 1
 
     dialog = ctk.CTkToplevel(app)
     dialog.title("Confirm Delete")
@@ -551,8 +634,15 @@ def remove_record():
     dialog.configure(fg_color=SURFACE)
     dialog.grab_set()
 
+    if is_multi:
+        prompt_text = f"Delete {len(selected)} records from {table_name}?"
+    else:
+        values = tree.item(selected[0])["values"]
+        pk_val = values[0]
+        prompt_text = f"Delete record with {pk_col} = {pk_val}?"
+
     ctk.CTkLabel(dialog,
-                 text=f"Delete record with {pk_col} = {pk_val}?",
+                 text=prompt_text,
                  font=("Arial", 13), text_color=TEXT,
                  wraplength=320).pack(pady=(28, 8), padx=20)
     ctk.CTkLabel(dialog, text="This action cannot be undone.",
@@ -564,8 +654,11 @@ def remove_record():
     def confirm_delete():
         db_path = get_db_path()
         try:
-            db_mapper.delete_record_from_db(db_path, table_name, pk_col, pk_val)
-            tree.delete(selected[0])
+            for sel in selected:
+                values = tree.item(sel)["values"]
+                pk_val = values[0]
+                db_mapper.delete_record_from_db(db_path, table_name, pk_col, pk_val)
+                tree.delete(sel)
             remaining = len(tree.get_children())
             records_label.configure(
                 text=f"Showing records for: {table_name}  |  {remaining} total records", text_color=TEXT_DIM)
@@ -718,13 +811,125 @@ load_table("Branches")
 edit_frame = ctk.CTkFrame(app, fg_color=BG, corner_radius=0)
 
 
+# ════════════════════════════════════════
+#  MULTI-EDIT RECORD SCREEN
+# ════════════════════════════════════════
+multi_edit_frame = ctk.CTkFrame(app, fg_color=BG, corner_radius=0)
+
+def show_main_from_multi_edit():
+    multi_edit_frame.place_forget()
+    main_frame.place(x=0, y=0, relwidth=1, relheight=1)
+    table_str = records_label.cget("text")
+    if "|" in table_str:
+        apply_filters()
+
+multi_edit_navbar = ctk.CTkFrame(multi_edit_frame, height=48, fg_color=SURFACE, corner_radius=0)
+multi_edit_navbar.pack(fill="x", side="top")
+multi_edit_navbar.pack_propagate(False)
+
+ctk.CTkLabel(multi_edit_navbar, image=logo_img_small, text="").pack(side="left", padx=12, pady=8)
+ctk.CTkButton(multi_edit_navbar, text="Cancel", width=100, height=32,
+              fg_color=PANEL, text_color=TEXT_DIM, hover_color=BORDER,
+              corner_radius=6, command=show_main_from_multi_edit).pack(side="right", padx=6, pady=8)
+ctk.CTkLabel(multi_edit_navbar, text="Multi-Edit Mode", text_color=TEXT, font=("Arial", 16, "bold")).pack(side="left", padx=12)
+
+multi_edit_body = ctk.CTkFrame(multi_edit_frame, fg_color=BG, corner_radius=0)
+multi_edit_body.pack(fill="both", expand=True, padx=24, pady=(20, 0))
+
+multi_form_inner = ctk.CTkScrollableFrame(multi_edit_body, fg_color=SURFACE, corner_radius=8)
+multi_form_inner.pack(fill="both", expand=True, pady=(0, 8))
+
+multi_edit_entries = []
+
+def populate_multi_edit_form(selected=None, add_count=0):
+    for widget in multi_form_inner.winfo_children():
+        widget.destroy()
+    multi_edit_entries.clear()
+
+    table_str = records_label.cget("text")
+    if "|" not in table_str: return
+    table_name = table_str.split("|")[0].replace("Showing records for:", "").strip()
+    cols = TABLE_COLUMNS.get(table_name, ())
+    if not cols: return
+
+    header_frame = ctk.CTkFrame(multi_form_inner, fg_color="transparent")
+    header_frame.pack(fill="x", pady=(0, 10))
+    for col in cols:
+        ctk.CTkLabel(header_frame, text=col, font=("Arial", 12, "bold"), text_color=TEXT, width=140, anchor="w").pack(side="left", padx=5)
+
+    if add_count > 0:
+        for _ in range(add_count):
+            row_frame = ctk.CTkFrame(multi_form_inner, fg_color="transparent")
+            row_frame.pack(fill="x", pady=2)
+            row_dict = {"_pk_val": ""}
+            
+            for i, col in enumerate(cols):
+                entry = ctk.CTkEntry(row_frame, width=140, height=28, fg_color=PANEL, text_color=TEXT, border_width=1)
+                entry.pack(side="left", padx=5)
+                if i == 0:
+                    entry.configure(placeholder_text="Auto-assigned", state="disabled", fg_color=BG, text_color=TEXT_DIM)
+                row_dict[col] = entry
+            multi_edit_entries.append(row_dict)
+    elif selected:
+        for sel_id in selected:
+            values = tree.item(sel_id)["values"]
+            row_frame = ctk.CTkFrame(multi_form_inner, fg_color="transparent")
+            row_frame.pack(fill="x", pady=2)
+            row_dict = {"_pk_val": values[0]}
+            
+            for i, col in enumerate(cols):
+                val = "" if i >= len(values) else values[i]
+                if val is None: val = ""
+                entry = ctk.CTkEntry(row_frame, width=140, height=28, fg_color=PANEL, text_color=TEXT, border_width=1)
+                entry.pack(side="left", padx=5)
+                entry.insert(0, str(val))
+                if i == 0:
+                    entry.configure(state="disabled", fg_color=BG, text_color=TEXT_DIM)
+                row_dict[col] = entry
+            multi_edit_entries.append(row_dict)
+
+multi_edit_bottom = ctk.CTkFrame(multi_edit_frame, height=40, fg_color=SURFACE, corner_radius=8)
+multi_edit_bottom.pack(fill="x", side="bottom", padx=12, pady=(0, 12))
+multi_edit_bottom.pack_propagate(False)
+
+multi_status_label = ctk.CTkLabel(multi_edit_bottom, text="Edit multiple records simultaneously.", text_color=TEXT_DIM, font=("Arial", 11))
+multi_status_label.pack(side="left", padx=12)
+
+def save_multi_edit():
+    table_str = records_label.cget("text")
+    if "|" not in table_str: return
+    table_name = table_str.split("|")[0].replace("Showing records for:", "").strip()
+    cols = TABLE_COLUMNS.get(table_name, ())
+    db_path = get_db_path()
+    
+    try:
+        for row_dict in multi_edit_entries:
+            pk_val = row_dict["_pk_val"]
+            values = [row_dict[col].get() for col in cols[1:]]
+            validate_inputs(cols, values)
+            if pk_val == "":
+                db_mapper.insert_record_to_db(db_path, table_name, cols, values)
+            else:
+                db_mapper.save_record_to_db(db_path, table_name, cols, values, pk_val)
+        multi_status_label.configure(text=f"Successfully updated {len(multi_edit_entries)} records!", text_color="#3D7BFF")
+        app.after(1000, show_main_from_multi_edit)
+    except Exception as e:
+        multi_status_label.configure(text=f"Error saving: {e}", text_color=DANGER)
+
+ctk.CTkButton(multi_edit_bottom, text="Save All", width=90, height=28, fg_color=ACCENT, text_color=TEXT, hover_color=BORDER, corner_radius=6, command=save_multi_edit).pack(side="right", padx=4, pady=6)
+
+
 def show_edit():
     selected = tree.selection()
     if not selected:
         return
     main_frame.place_forget()
-    edit_frame.place(x=0, y=0, relwidth=1, relheight=1)
-    populate_edit_form()
+    if len(selected) > 1:
+        multi_edit_frame.place(x=0, y=0, relwidth=1, relheight=1)
+        populate_multi_edit_form(selected)
+    else:
+        edit_frame.place(x=0, y=0, relwidth=1, relheight=1)
+        populate_edit_form()
 
 
 def show_main_from_edit():
@@ -749,9 +954,7 @@ ctk.CTkButton(edit_navbar, text="Load Database", width=130, height=32,
               fg_color=PANEL, text_color=TEXT_DIM, hover_color=BORDER,
               corner_radius=6, command=show_landing).pack(side="right", padx=6, pady=8)
 
-ctk.CTkButton(edit_navbar, text="Edit Record", width=120, height=32,
-              fg_color=ACCENT, text_color=TEXT, hover_color="#2D6AEF",
-              corner_radius=6).pack(side="right", padx=6, pady=8)
+# Edit Record button removed
 
 ctk.CTkButton(edit_navbar, text="Database Editor", width=140, height=32,
               fg_color=PANEL, text_color=TEXT_DIM, hover_color=BORDER,
@@ -860,6 +1063,7 @@ def save_record():
 
     db_path = get_db_path()
     try:
+        validate_inputs(cols, values)
         if pk_val:
             db_mapper.save_record_to_db(
                 db_path, table_name, cols, values, pk_val)
@@ -867,6 +1071,7 @@ def save_record():
             db_mapper.insert_record_to_db(db_path, table_name, cols, values)
         status_label.configure(
             text="Record saved successfully!", text_color="#3D7BFF")
+        app.after(500, show_main_from_edit)
     except Exception as e:
         status_label.configure(text=f"Error saving: {e}", text_color=DANGER)
 
@@ -881,7 +1086,7 @@ for label, color in [("Delete", DANGER), ("Paste", PANEL),
     btn.pack(side="right", padx=4, pady=6)
 
 # ── WIRE EDIT BUTTON ──
-edit_record_btn.configure(command=show_edit)
+# edit_record_btn removed
 
 # ── START ──
 show_landing()
