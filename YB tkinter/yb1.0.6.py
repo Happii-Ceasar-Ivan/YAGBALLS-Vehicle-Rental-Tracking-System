@@ -1,6 +1,7 @@
 import customtkinter as ctk
 from tkinter import ttk
 import tkinter as tk
+from tkinter import messagebox
 import tkinter.font as tkfont
 from PIL import Image
 import sys
@@ -211,6 +212,14 @@ filter_top.pack(fill="x", padx=10, pady=8)
 condition_rows = []
 
 def repack_conditions():
+    num_rows = len(condition_rows)
+    if num_rows == 0:
+        filter_conditions_frame.pack_forget()
+    else:
+        new_height = min(num_rows, 5) * 35
+        filter_conditions_frame.configure(height=new_height)
+        filter_conditions_frame.pack(fill="x", padx=10, pady=(0,8), after=filter_top)
+            
     for i, row in enumerate(condition_rows):
         row['frame'].pack_forget()
         row['frame'].pack(fill="x", pady=2)
@@ -307,6 +316,7 @@ def add_condition_row(selected_attr):
         'val_entry': val_entry
     }
     condition_rows.append(row_data)
+    repack_conditions()
 
 def apply_filters():
     table_str = records_label.cget("text")
@@ -355,6 +365,7 @@ def clear_filters():
     for row in condition_rows:
         row['frame'].destroy()
     condition_rows.clear()
+    repack_conditions()
     
     table_str = records_label.cget("text")
     if "|" in table_str:
@@ -417,6 +428,7 @@ apply_btn.pack(side="left", padx=4)
 
 filter_conditions_frame = ctk.CTkScrollableFrame(filter_frame, height=140, fg_color="transparent")
 filter_conditions_frame.pack(fill="x", padx=10, pady=(0,8))
+repack_conditions()
 
 # ── TREEVIEW STYLE ──
 style = ttk.Style()
@@ -475,11 +487,43 @@ def add_record():
 
 
 def duplicate_record():
-    if not tree.selection():
+    selected = tree.selection()
+    if not selected:
+        messagebox.showwarning("No Selection", "Please select a record to duplicate.")
         return
-    main_frame.place_forget()
-    edit_frame.place(x=0, y=0, relwidth=1, relheight=1)
-    populate_edit_form(duplicate=True)
+        
+    table_str = records_label.cget("text")
+    if "|" not in table_str: return
+    table_name = table_str.split("|")[0].replace("Showing records for:", "").strip()
+    
+    allowed_tables = ["Vehicle_Categories", "Vehicle_Models"]
+    if table_name not in allowed_tables:
+        reasons = {
+            "Branches": "Physical branches cannot be duplicated.",
+            "Vehicles": "License Plates must be entirely unique.",
+            "Customers": "Emails and Driver's Licenses must be entirely unique.",
+            "Employees": "Emails and Employee details must be entirely unique.",
+            "Rentals": "Rental contracts represent specific time-bound transactions.",
+            "Payments": "Financial transactions cannot be duplicated.",
+            "Maintenance_Logs": "Maintenance logs are specific to exact timestamps.",
+            "Damage_Reports": "Damage incidents are unique events."
+        }
+        reason = reasons.get(table_name, "Data integrity rules prevent duplicating this record.")
+        messagebox.showerror("Cannot Duplicate", f"Cannot duplicate {table_name}!\n\n{reason}")
+        return
+        
+    cols = TABLE_COLUMNS.get(table_name, ())
+    row_values = tree.item(selected[0])['values']
+    
+    # Exclude PK
+    values_to_insert = row_values[1:]
+    db_path = get_db_path()
+    try:
+        db_mapper.insert_record_to_db(db_path, table_name, cols, values_to_insert)
+        apply_filters()
+        messagebox.showinfo("Success", "Record duplicated successfully!")
+    except Exception as e:
+        messagebox.showerror("Error", f"Failed to duplicate record:\n{e}")
 
 
 def remove_record():
@@ -520,11 +564,11 @@ def remove_record():
     def confirm_delete():
         db_path = get_db_path()
         try:
-            db_mapper.delete_record_from_db(db_path, table_name, pk_val)
+            db_mapper.delete_record_from_db(db_path, table_name, pk_col, pk_val)
             tree.delete(selected[0])
             remaining = len(tree.get_children())
             records_label.configure(
-                text=f"Showing records for: {table_name}  |  {remaining} total records")
+                text=f"Showing records for: {table_name}  |  {remaining} total records", text_color=TEXT_DIM)
             dialog.destroy()
         except Exception as e:
             dialog.destroy()
@@ -649,9 +693,9 @@ def load_table(name, where_clause="", query_params=()):
         if conn:
             conn.close()
         records_label.configure(
-            text=f"Showing records for: {name}  |  {len(rows)} total records")
+            text=f"Showing records for: {name}  |  {len(rows)} total records", text_color=TEXT_DIM)
     except sqlite3.Error as e:
-        records_label.configure(text=f"Error loading {name} at {db_path}: {e}")
+        records_label.configure(text=f"Error loading {name} at {db_path}: {e}", text_color=DANGER)
 
 
 # ── SIDEBAR BUTTONS ──

@@ -237,7 +237,7 @@ def insert_record_to_db(db_path, table_name, cols, values):
         conn.close()
 
 
-def delete_record_from_db(db_path, table_name, pk_val):
+def delete_record_from_db(db_path, table_name, pk_col, pk_val):
     raw_id = parse_id(pk_val)
     if raw_id is None:
         raise ValueError(f"Invalid ID format: {pk_val}")
@@ -246,7 +246,7 @@ def delete_record_from_db(db_path, table_name, pk_val):
     cursor = conn.cursor()
     try:
         cursor.execute(
-            f"DELETE FROM {table_name} WHERE {table_name[:-1]+'ID' if table_name != 'People' else 'ID'}=?", (raw_id,))
+            f'DELETE FROM {table_name} WHERE "{pk_col}"=?', (raw_id,))
         conn.commit()
     finally:
         conn.close()
