@@ -23,6 +23,11 @@ def resource_path(relative_path):
     return os.path.join(base_path, relative_path)
 
 def backup_db():
+    dialog = ctk.CTkInputDialog(text="Enter a name for this backup (optional):", title="Backup Database")
+    custom_name = dialog.get_input()
+    if custom_name is None:
+        return  # User cancelled
+
     db_path = get_db_path()
     db_dir = os.path.dirname(db_path)
     backups_dir = os.path.join(db_dir, "backups")
@@ -30,7 +35,14 @@ def backup_db():
         os.makedirs(backups_dir)
         
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-    backup_filename = f"yb_rental_backup_{timestamp}.db"
+    
+    custom_suffix = ""
+    if custom_name.strip() != "":
+        # sanitize name to prevent file path issues
+        safe_name = "".join(c if c.isalnum() else "_" for c in custom_name.strip())
+        custom_suffix = f"_{safe_name}"
+
+    backup_filename = f"yb_rental_backup_{timestamp}{custom_suffix}.db"
     backup_path = os.path.join(backups_dir, backup_filename)
     
     try:
