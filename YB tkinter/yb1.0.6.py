@@ -924,10 +924,18 @@ def populate_multi_edit_form(selected=None, add_count=0):
             row_dict = {"_pk_val": ""}
             
             for i, col in enumerate(cols):
-                entry = ctk.CTkEntry(row_frame, width=140, height=28, fg_color=PANEL, text_color=TEXT, border_width=1)
-                entry.pack(side="left", padx=5)
-                if i == 0:
-                    entry.configure(placeholder_text="Auto-assigned", state="disabled", fg_color=BG, text_color=TEXT_DIM)
+                dropdown_options = db_mapper.get_dropdown_options(get_db_path(), table_name, col)
+                if dropdown_options and i != 0:
+                    entry = ctk.CTkOptionMenu(row_frame, width=140, height=28, fg_color=PANEL, 
+                                              text_color=TEXT, font=("Arial", 12), values=dropdown_options)
+                    entry.pack(side="left", padx=5)
+                    if len(dropdown_options) > 0: entry.set(dropdown_options[0])
+                else:
+                    entry = ctk.CTkEntry(row_frame, width=140, height=28, fg_color=PANEL, 
+                                         text_color=TEXT, border_width=1)
+                    entry.pack(side="left", padx=5)
+                    if i == 0:
+                        entry.configure(placeholder_text="Auto-assigned", state="disabled", fg_color=BG, text_color=TEXT_DIM)
                 row_dict[col] = entry
             multi_edit_entries.append(row_dict)
     elif selected:
@@ -939,12 +947,20 @@ def populate_multi_edit_form(selected=None, add_count=0):
             
             for i, col in enumerate(cols):
                 val = "" if i >= len(values) else values[i]
-                if val is None: val = ""
-                entry = ctk.CTkEntry(row_frame, width=140, height=28, fg_color=PANEL, text_color=TEXT, border_width=1)
-                entry.pack(side="left", padx=5)
-                entry.insert(0, str(val))
-                if i == 0:
-                    entry.configure(state="disabled", fg_color=BG, text_color=TEXT_DIM)
+                if val is None or str(val).lower() == "none": val = ""
+                dropdown_options = db_mapper.get_dropdown_options(get_db_path(), table_name, col)
+                if dropdown_options and i != 0:
+                    entry = ctk.CTkOptionMenu(row_frame, width=140, height=28, fg_color=PANEL, 
+                                              text_color=TEXT, font=("Arial", 12), values=dropdown_options)
+                    entry.pack(side="left", padx=5)
+                    if val: entry.set(str(val))
+                    elif len(dropdown_options) > 0: entry.set(dropdown_options[0])
+                else:
+                    entry = ctk.CTkEntry(row_frame, width=140, height=28, fg_color=PANEL, text_color=TEXT, border_width=1)
+                    entry.pack(side="left", padx=5)
+                    entry.insert(0, str(val))
+                    if i == 0:
+                        entry.configure(state="disabled", fg_color=BG, text_color=TEXT_DIM)
                 row_dict[col] = entry
             multi_edit_entries.append(row_dict)
 
@@ -1073,19 +1089,26 @@ def populate_edit_form(blank=False, duplicate=False):
             val = ""
 
         is_pk = (i == 0)
-        entry = ctk.CTkEntry(form_inner, width=480, height=34,
-                             fg_color=PANEL, text_color=TEXT if not is_pk else TEXT_DIM,
-                             border_color=BORDER, font=("Arial", 12))
-        entry.grid(row=row, column=col_pos * 2 + 1,
-                   padx=(0, 40), pady=10, sticky="ew")
-
-        if is_pk and not blank and not duplicate:
-            entry.insert(0, str(val))
-            entry.configure(state="disabled")
-        elif is_pk:
-            entry.configure(placeholder_text="Auto-assigned", state="disabled")
+        dropdown_options = db_mapper.get_dropdown_options(get_db_path(), table_name, col)
+        if dropdown_options and not is_pk:
+            entry = ctk.CTkOptionMenu(form_inner, width=480, height=34,
+                                      fg_color=PANEL, text_color=TEXT, font=("Arial", 12), values=dropdown_options)
+            entry.grid(row=row, column=col_pos * 2 + 1, padx=(0, 40), pady=10, sticky="ew")
+            if not blank and val and str(val).lower() != "none": entry.set(str(val))
+            elif duplicate and val and str(val).lower() != "none": entry.set(str(val))
+            elif len(dropdown_options) > 0: entry.set(dropdown_options[0])
         else:
-            entry.insert(0, str(val))
+            entry = ctk.CTkEntry(form_inner, width=480, height=34,
+                                 fg_color=PANEL, text_color=TEXT if not is_pk else TEXT_DIM,
+                                 border_color=BORDER, font=("Arial", 12))
+            entry.grid(row=row, column=col_pos * 2 + 1, padx=(0, 40), pady=10, sticky="ew")
+            if is_pk and not blank and not duplicate:
+                entry.insert(0, str(val))
+                entry.configure(state="disabled")
+            elif is_pk:
+                entry.configure(placeholder_text="Auto-assigned", state="disabled")
+            else:
+                entry.insert(0, str(val) if str(val).lower() != "none" else "")
 
         edit_entries[col] = entry
 

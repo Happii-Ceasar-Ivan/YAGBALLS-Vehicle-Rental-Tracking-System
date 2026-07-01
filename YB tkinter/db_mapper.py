@@ -68,15 +68,21 @@ def _handle_rental_automations(cursor, values, raw_id, vhc_id):
                 daily_rate = float(rates[0])
                 overdue_rate = float(rates[1])
                 
-                fmt = "%Y-%m-%d %H:%M:%S"
                 def parse_dt(dt_str):
-                    try: return datetime.strptime(str(dt_str).strip(), fmt)
-                    except: return datetime.strptime(str(dt_str).strip()[:10], "%Y-%m-%d")
+                    if not dt_str or str(dt_str).strip().lower() == "none": return None
+                    s = str(dt_str).strip()
+                    for fmt in ("%Y-%m-%d %H:%M:%S", "%Y-%m-%d %H:%M", "%Y-%m-%d", 
+                                "%y-%m-%d %H:%M:%S", "%y-%m-%d %H:%M", "%y-%m-%d", 
+                                "%m/%d/%Y %H:%M:%S", "%m/%d/%Y %H:%M", "%m/%d/%Y",
+                                "%m/%d/%y %H:%M:%S", "%m/%d/%y %H:%M", "%m/%d/%y"):
+                        try: return datetime.strptime(s, fmt)
+                        except ValueError: continue
+                    raise ValueError(f"Invalid date format: {s}")
                 
                 rented_on = parse_dt(values[5])
                 expected = parse_dt(values[6])
                 
-                actual_dt_str = values[7] if (values[7] and str(values[7]).lower() != "none") else datetime.now().strftime(fmt)
+                actual_dt_str = values[7] if (values[7] and str(values[7]).lower() != "none") else datetime.now().strftime("%Y-%m-%d %H:%M:%S")
                 actual = parse_dt(actual_dt_str)
                 
                 days_rented = (expected - rented_on).days
@@ -422,15 +428,21 @@ def run_automation_sweep(db_path):
                 daily_rate = float(rates[0])
                 overdue_rate = float(rates[1])
                 
-                fmt = "%Y-%m-%d %H:%M:%S"
                 def parse_dt(dt_str):
-                    try: return datetime.strptime(str(dt_str).strip(), fmt)
-                    except: return datetime.strptime(str(dt_str).strip()[:10], "%Y-%m-%d")
+                    if not dt_str or str(dt_str).strip().lower() == "none": return None
+                    s = str(dt_str).strip()
+                    for fmt in ("%Y-%m-%d %H:%M:%S", "%Y-%m-%d %H:%M", "%Y-%m-%d", 
+                                "%y-%m-%d %H:%M:%S", "%y-%m-%d %H:%M", "%y-%m-%d", 
+                                "%m/%d/%Y %H:%M:%S", "%m/%d/%Y %H:%M", "%m/%d/%Y",
+                                "%m/%d/%y %H:%M:%S", "%m/%d/%y %H:%M", "%m/%d/%y"):
+                        try: return datetime.strptime(s, fmt)
+                        except ValueError: continue
+                    raise ValueError(f"Invalid date format: {s}")
                 
                 r_on = parse_dt(rented_on)
                 e_ret = parse_dt(expected)
                 
-                actual_dt_str = actual if (actual and str(actual).lower() != "none") else datetime.now().strftime(fmt)
+                actual_dt_str = actual if (actual and str(actual).lower() != "none") else datetime.now().strftime("%Y-%m-%d %H:%M:%S")
                 a_ret = parse_dt(actual_dt_str)
                 
                 days_rented = (e_ret - r_on).days
@@ -457,3 +469,51 @@ def run_automation_sweep(db_path):
         conn.close()
     
     return fixes
+
+def get_dropdown_options(db_path, table_name, col_name):
+    if col_name == "Status":
+        if table_name == "Vehicles":
+            return ["Available", "Rented", "Maintenance", "Overdue"]
+        if table_name == "Rentals":
+            return ["Ongoing", "Completed", "Cancelled", "Overdue"]
+        if table_name in ("Maintenance_Logs", "Damage_Reports"):
+            return ["Pending", "In Progress", "Resolved", "Cancelled"]
+    
+    if table_name == "Employees" and col_name == "Role":
+        return ["Admin", "Manager", "Staff"]
+    if col_name == "Payment Method":
+        return ["Cash", "Credit Card", "Debit Card", "Bank Transfer", "E-Wallet"]
+    if col_name == "Is Active?":
+        return ["Yes", "No"]
+    
+    conn = sqlite3.connect(db_path)
+    cursor = conn.cursor()
+    options = []
+    try:
+        if col_name in ("Current Branch", "Pickup Branch", "Dropoff Branch", "Branch Assigned"):
+            rows = cursor.execute("SELECT BranchName FROM Branches ORDER BY BranchName").fetchall()
+            options = [r[0] for r in rows]
+        elif col_name == "Category Name":
+            rows = cursor.execute("SELECT CategoryName FROM Vehicle_Categories ORDER BY CategoryName").fetchall()
+            options = [r[0] for r in rows]
+        elif col_name == "Model":
+            rows = cursor.execute("SELECT Brand || ' ' || ModelName FROM Vehicle_Models ORDER BY Brand").fetchall()
+            options = [r[0] for r in rows]
+        elif col_name in ("Handled By", "Supervisor Name"):
+            rows = cursor.execute("SELECT FirstName || ' ' || LastName FROM Employees ORDER BY FirstName").fetchall()
+            options = [r[0] for r in rows]
+        elif col_name == "Customer Name":
+            rows = cursor.execute("SELECT FirstName || ' ' || LastName FROM Customers ORDER BY FirstName").fetchall()
+            options = [r[0] for r in rows]
+        elif col_name == "Vehicle ID":
+            rows = cursor.execute("SELECT 'VHC-' || VehicleID || ' (' || LicensePlate || ')' FROM Vehicles ORDER BY VehicleID").fetchall()
+            options = [r[0] for r in rows]
+        elif col_name == "Rental ID":
+            rows = cursor.execute("SELECT 'RNT-' || RentalID FROM Rentals ORDER BY RentalID").fetchall()
+            options = [r[0] for r in rows]
+    except Exception as e:
+        print(f"Error fetching dropdowns: {e}")
+    finally:
+        conn.close()
+    
+    return options
