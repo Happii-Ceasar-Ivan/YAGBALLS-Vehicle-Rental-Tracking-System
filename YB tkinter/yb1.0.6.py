@@ -73,6 +73,40 @@ def restore_db():
                 messagebox.showerror("Restore Failed", f"Failed to restore database:\n{e}")
 
 
+def auto_backup_for_undo():
+    db_path = get_db_path()
+    db_dir = os.path.dirname(db_path)
+    backups_dir = os.path.join(db_dir, "backups")
+    if not os.path.exists(backups_dir):
+        os.makedirs(backups_dir)
+        
+    undo_path = os.path.join(backups_dir, ".yb_rental_undo_state.db")
+    
+    try:
+        shutil.copy2(db_path, undo_path)
+    except Exception as e:
+        print("Silent undo backup failed:", e)
+
+
+def undo_last_action():
+    db_path = get_db_path()
+    db_dir = os.path.dirname(db_path)
+    undo_path = os.path.join(db_dir, "backups", ".yb_rental_undo_state.db")
+    
+    if not os.path.exists(undo_path):
+        messagebox.showinfo("Undo Unavailable", "There is no previous action to undo.")
+        return
+        
+    try:
+        shutil.copy2(undo_path, db_path)
+        messagebox.showinfo("Undo Successful", "Successfully reverted to the previous database state.")
+        table_str = records_label.cget("text")
+        if "|" in table_str:
+            apply_filters()
+    except Exception as e:
+        messagebox.showerror("Undo Failed", f"Failed to undo last action:\n{e}")
+
+
 def get_db_path():
     """ Determine the database path robustly for both script and .exe modes """
     if getattr(sys, 'frozen', False):
@@ -144,7 +178,7 @@ def validate_inputs(cols, values):
     
     for col, val in zip(cols[1:], values):
         val_str = str(val).strip()
-        if val_str == "":
+        if val_str == "" or val_str.lower() == "none":
             continue
         if col in numeric_cols:
             try:
@@ -182,6 +216,14 @@ def show_landing():
 
 
 def show_main():
+    # Run overdue automation invisibly on boot
+    db_mapper.auto_update_overdue(get_db_path())
+    
+    # Run automation sweep for missed completed rentals
+    fixes = db_mapper.run_automation_sweep(get_db_path())
+    if fixes > 0:
+        messagebox.showinfo("Auto-Reconciler", f"Detected missed automations on startup.\nAutomatically fixed {fixes} missing payment/vehicle update(s)!")
+    
     landing_frame.place_forget()
     main_frame.place(x=0, y=0, relwidth=1, relheight=1)
 
@@ -260,6 +302,11 @@ restore_btn = ctk.CTkButton(navbar, text="Restore DB", width=100, height=32,
                             fg_color=PANEL, text_color=TEXT_DIM, hover_color=BORDER,
                             corner_radius=6, command=restore_db)
 restore_btn.pack(side="right", padx=6, pady=8)
+
+undo_btn = ctk.CTkButton(navbar, text="Undo Last Action", width=130, height=32,
+                         fg_color=PANEL, text_color=TEXT_DIM, hover_color=BORDER,
+                         corner_radius=6, command=undo_last_action)
+undo_btn.pack(side="right", padx=6, pady=8)
 
 # ════════════════════════════════════════
 #  MAIN SCREEN — BODY
@@ -657,7 +704,7 @@ def remove_record():
                  text=prompt_text,
                  font=("Arial", 13), text_color=TEXT,
                  wraplength=320).pack(pady=(28, 8), padx=20)
-    ctk.CTkLabel(dialog, text="This action cannot be undone.",
+    ctk.CTkLabel(dialog, text="This action can be reverted using the Undo button.",
                  font=("Arial", 11), text_color=TEXT_DIM).pack()
 
     btn_row = ctk.CTkFrame(dialog, fg_color="transparent")
@@ -665,6 +712,7 @@ def remove_record():
 
     def confirm_delete():
         db_path = get_db_path()
+        auto_backup_for_undo()
         try:
             for sel in selected:
                 values = tree.item(sel)["values"]
@@ -914,6 +962,7 @@ def save_multi_edit():
     cols = TABLE_COLUMNS.get(table_name, ())
     db_path = get_db_path()
     
+    auto_backup_for_undo()
     try:
         for row_dict in multi_edit_entries:
             pk_val = row_dict["_pk_val"]
@@ -1070,10 +1119,11 @@ def save_record():
         return
 
     pk_entry = edit_entries[cols[0]]
-    pk_val = pk_entry.get().strip() if pk_entry.cget("state") == "normal" else ""
+    pk_val = pk_entry.get().strip()
     values = [edit_entries[col].get() for col in cols[1:]]
 
     db_path = get_db_path()
+    auto_backup_for_undo()
     try:
         validate_inputs(cols, values)
         if pk_val:
@@ -1101,5 +1151,12 @@ for label, color in [("Delete", DANGER), ("Paste", PANEL),
 # edit_record_btn removed
 
 # ── START ──
+
+def on_closing():
+    if messagebox.askyesno("Exit", "Are you sure you want to exit?"):
+        app.destroy()
+
+app.protocol("WM_DELETE_WINDOW", on_closing)
+
 show_landing()
 app.mainloop()

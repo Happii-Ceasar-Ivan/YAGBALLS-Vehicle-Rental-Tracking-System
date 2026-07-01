@@ -1,4 +1,5 @@
 import sqlite3
+from datetime import datetime
 
 
 def parse_id(s):
@@ -46,13 +47,73 @@ def update_customers(cursor, values, raw_id):
                    (fname, lname, values[1], values[2], values[3], is_active, raw_id))
 
 
+def _handle_rental_automations(cursor, values, raw_id, vhc_id):
+    status = str(values[10]).strip().lower()
+    if status == 'completed':
+        # 1. Update Vehicle Status & Mileage
+        end_mileage = values[9] if (values[9] and str(values[9]).lower() != "none") else values[8]
+        cursor.execute("UPDATE Vehicles SET CurrentMileage=?, Status='Available' WHERE VehicleID=?", (end_mileage, vhc_id))
+        
+        # 2. Calculate Penalties & Auto-Generate Payment Record
+        rates = cursor.execute("""
+            SELECT c.DailyRate, c.OverdueRatePerHour 
+            FROM Vehicles v 
+            JOIN Vehicle_Models m ON v.ModelID = m.ModelID 
+            JOIN Vehicle_Categories c ON m.CategoryID = c.CategoryID 
+            WHERE v.VehicleID = ?
+        """, (vhc_id,)).fetchone()
+        
+        if rates:
+            try:
+                daily_rate = float(rates[0])
+                overdue_rate = float(rates[1])
+                
+                fmt = "%Y-%m-%d %H:%M:%S"
+                def parse_dt(dt_str):
+                    try: return datetime.strptime(str(dt_str).strip(), fmt)
+                    except: return datetime.strptime(str(dt_str).strip()[:10], "%Y-%m-%d")
+                
+                rented_on = parse_dt(values[5])
+                expected = parse_dt(values[6])
+                
+                actual_dt_str = values[7] if (values[7] and str(values[7]).lower() != "none") else datetime.now().strftime(fmt)
+                actual = parse_dt(actual_dt_str)
+                
+                days_rented = (expected - rented_on).days
+                if days_rented < 1: days_rented = 1
+                
+                base_amount = daily_rate * days_rented
+                penalty_amount = 0.0
+                
+                if actual > expected:
+                    diff = actual - expected
+                    hours_overdue = diff.total_seconds() / 3600.0
+                    penalty_amount = overdue_rate * hours_overdue
+                    
+                total_amount = base_amount + penalty_amount
+                
+                # Check if payment already exists
+                existing = cursor.execute("SELECT PaymentID FROM Payments WHERE RentalID=?", (raw_id,)).fetchone()
+                if existing:
+                    cursor.execute("UPDATE Payments SET PaidOn=?, BaseAmount=?, PenaltyAmount=?, TotalAmount=?, PaymentMethod='Cash' WHERE RentalID=?",
+                                   (actual_dt_str, round(base_amount, 2), round(penalty_amount, 2), round(total_amount, 2), raw_id))
+                else:
+                    cursor.execute("INSERT INTO Payments (RentalID, PaidOn, BaseAmount, PenaltyAmount, TotalAmount, PaymentMethod) VALUES (?, ?, ?, ?, ?, 'Cash')",
+                                   (raw_id, actual_dt_str, round(base_amount, 2), round(penalty_amount, 2), round(total_amount, 2)))
+            except Exception as e:
+                print(f"Penalty automation failed: {e}")
+
 def update_rentals(cursor, values, raw_id):
     emp = cursor.execute(
         "SELECT EmployeeID FROM Employees WHERE FirstName || ' ' || LastName = ?", (values[0],)).fetchone()
     emp_id = emp[0] if emp else None
+    if emp_id is None: raise ValueError(f"Could not find Employee '{values[0]}'")
+    
     cust = cursor.execute(
         "SELECT CustomerID FROM Customers WHERE FirstName || ' ' || LastName = ?", (values[1],)).fetchone()
     cust_id = cust[0] if cust else None
+    if cust_id is None: raise ValueError(f"Could not find Customer '{values[1]}'")
+    
     vhc_id = parse_id(values[2])
     pub = cursor.execute(
         "SELECT BranchID FROM Branches WHERE BranchName=?", (values[3],)).fetchone()
@@ -60,8 +121,12 @@ def update_rentals(cursor, values, raw_id):
     dob = cursor.execute(
         "SELECT BranchID FROM Branches WHERE BranchName=?", (values[4],)).fetchone()
     dob_id = dob[0] if dob else None
+    
     cursor.execute("UPDATE Rentals SET EmployeeID=?, CustomerID=?, VehicleID=?, PickUpBranchID=?, DropOffBranchID=?, RentedOn=?, ExpectedReturn=?, ActualReturn=?, StartMileage=?, EndMileage=?, Status=? WHERE RentalID=?",
                    (emp_id, cust_id, vhc_id, pub_id, dob_id, values[5], values[6], values[7], values[8], values[9], values[10], raw_id))
+                   
+    # ── AUTOMATIONS ──
+    _handle_rental_automations(cursor, values, raw_id, vhc_id)
 
 
 def update_payments(cursor, values, raw_id):
@@ -158,9 +223,13 @@ def insert_rentals(cursor, values):
     emp = cursor.execute(
         "SELECT EmployeeID FROM Employees WHERE FirstName || ' ' || LastName = ?", (values[0],)).fetchone()
     emp_id = emp[0] if emp else None
+    if emp_id is None: raise ValueError(f"Could not find Employee '{values[0]}'")
+    
     cust = cursor.execute(
         "SELECT CustomerID FROM Customers WHERE FirstName || ' ' || LastName = ?", (values[1],)).fetchone()
     cust_id = cust[0] if cust else None
+    if cust_id is None: raise ValueError(f"Could not find Customer '{values[1]}'")
+    
     vhc_id = parse_id(values[2])
     pub = cursor.execute(
         "SELECT BranchID FROM Branches WHERE BranchName=?", (values[3],)).fetchone()
@@ -171,6 +240,10 @@ def insert_rentals(cursor, values):
     cursor.execute(
         "INSERT INTO Rentals (EmployeeID, CustomerID, VehicleID, PickUpBranchID, DropOffBranchID, RentedOn, ExpectedReturn, ActualReturn, StartMileage, EndMileage, Status) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
         (emp_id, cust_id, vhc_id, pub_id, dob_id, values[5], values[6], values[7], values[8], values[9], values[10]))
+    raw_id = cursor.lastrowid
+    
+    # ── AUTOMATIONS ──
+    _handle_rental_automations(cursor, values, raw_id, vhc_id)
 
 
 def insert_payments(cursor, values):
@@ -233,6 +306,11 @@ def insert_record_to_db(db_path, table_name, cols, values):
     try:
         handler(cursor, values)
         conn.commit()
+    except sqlite3.IntegrityError as e:
+        if "NOT NULL" in str(e):
+            col = str(e).split('.')[-1] if '.' in str(e) else str(e)
+            raise ValueError(f"Invalid reference. A related record for '{col}' was not found. Please ensure it is typed correctly.")
+        raise
     finally:
         conn.close()
 
@@ -242,11 +320,14 @@ def delete_record_from_db(db_path, table_name, pk_col, pk_val):
     if raw_id is None:
         raise ValueError(f"Invalid ID format: {pk_val}")
 
+    real_pk_col = pk_col.replace(" ", "")
     conn = sqlite3.connect(db_path)
     cursor = conn.cursor()
     try:
         cursor.execute(
-            f'DELETE FROM {table_name} WHERE "{pk_col}"=?', (raw_id,))
+            f'DELETE FROM {table_name} WHERE "{real_pk_col}"=?', (raw_id,))
+        if cursor.rowcount == 0:
+            raise ValueError("Record not found or already deleted.")
         conn.commit()
     finally:
         conn.close()
@@ -267,5 +348,112 @@ def save_record_to_db(db_path, table_name, cols, values, pk_val):
     try:
         handler(cursor, values, raw_id)
         conn.commit()
+    except sqlite3.IntegrityError as e:
+        if "NOT NULL" in str(e):
+            col = str(e).split('.')[-1] if '.' in str(e) else str(e)
+            raise ValueError(f"Invalid reference. A related record for '{col}' was not found. Please ensure it is typed correctly.")
+        raise
     finally:
         conn.close()
+
+
+def auto_update_overdue(db_path):
+    conn = sqlite3.connect(db_path)
+    cursor = conn.cursor()
+    try:
+        # Update vehicles tied to overdue rentals first
+        cursor.execute("""
+            UPDATE Vehicles 
+            SET Status = 'Overdue'
+            WHERE VehicleID IN (
+                SELECT VehicleID FROM Rentals 
+                WHERE Status = 'Ongoing' 
+                AND ExpectedReturn < DATETIME('now', 'localtime')
+            )
+        """)
+        
+        # Update the rentals themselves
+        cursor.execute("""
+            UPDATE Rentals
+            SET Status = 'Overdue'
+            WHERE Status = 'Ongoing' 
+            AND ExpectedReturn < DATETIME('now', 'localtime')
+        """)
+        
+        conn.commit()
+    except Exception as e:
+        print(f"Failed to auto-update overdue records: {e}")
+    finally:
+        conn.close()
+
+def run_automation_sweep(db_path):
+    conn = sqlite3.connect(db_path)
+    cursor = conn.cursor()
+    fixes = 0
+    try:
+        rentals = cursor.execute('''
+            SELECT r.RentalID, r.VehicleID, r.RentedOn, r.ExpectedReturn, r.ActualReturn, r.StartMileage, r.EndMileage 
+            FROM Rentals r
+            LEFT JOIN Payments p ON r.RentalID = p.RentalID
+            WHERE r.Status = 'Completed' AND p.PaymentID IS NULL
+        ''').fetchall()
+        
+        for r in rentals:
+            rental_id, vhc_id, rented_on, expected, actual, start_m, end_m = r
+            
+            # Check Vehicle
+            veh = cursor.execute("SELECT CurrentMileage, Status FROM Vehicles WHERE VehicleID=?", (vhc_id,)).fetchone()
+            if veh:
+                veh_m, veh_status = veh
+                target_m = end_m if (end_m and str(end_m).lower() != "none") else start_m
+                if str(veh_m) != str(target_m) or veh_status != 'Available':
+                    cursor.execute("UPDATE Vehicles SET CurrentMileage=?, Status='Available' WHERE VehicleID=?", (target_m, vhc_id))
+            
+            # Create Payment
+            rates = cursor.execute("""
+                SELECT c.DailyRate, c.OverdueRatePerHour 
+                FROM Vehicles v 
+                JOIN Vehicle_Models m ON v.ModelID = m.ModelID 
+                JOIN Vehicle_Categories c ON m.CategoryID = c.CategoryID 
+                WHERE v.VehicleID = ?
+            """, (vhc_id,)).fetchone()
+            
+            if rates:
+                daily_rate = float(rates[0])
+                overdue_rate = float(rates[1])
+                
+                fmt = "%Y-%m-%d %H:%M:%S"
+                def parse_dt(dt_str):
+                    try: return datetime.strptime(str(dt_str).strip(), fmt)
+                    except: return datetime.strptime(str(dt_str).strip()[:10], "%Y-%m-%d")
+                
+                r_on = parse_dt(rented_on)
+                e_ret = parse_dt(expected)
+                
+                actual_dt_str = actual if (actual and str(actual).lower() != "none") else datetime.now().strftime(fmt)
+                a_ret = parse_dt(actual_dt_str)
+                
+                days_rented = (e_ret - r_on).days
+                if days_rented < 1: days_rented = 1
+                
+                base_amount = daily_rate * days_rented
+                penalty_amount = 0.0
+                
+                if a_ret > e_ret:
+                    diff = a_ret - e_ret
+                    hours_overdue = diff.total_seconds() / 3600.0
+                    penalty_amount = overdue_rate * hours_overdue
+                    
+                total_amount = base_amount + penalty_amount
+                
+                cursor.execute("INSERT INTO Payments (RentalID, PaidOn, BaseAmount, PenaltyAmount, TotalAmount, PaymentMethod) VALUES (?, ?, ?, ?, ?, 'Cash')",
+                               (rental_id, actual_dt_str, round(base_amount, 2), round(penalty_amount, 2), round(total_amount, 2)))
+                fixes += 1
+                
+        conn.commit()
+    except Exception as e:
+        print(f"Sweep failed: {e}")
+    finally:
+        conn.close()
+    
+    return fixes
