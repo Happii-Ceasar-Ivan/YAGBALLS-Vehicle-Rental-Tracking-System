@@ -485,6 +485,10 @@ def get_dropdown_options(db_path, table_name, col_name):
         return ["Cash", "Credit Card", "Debit Card", "Bank Transfer", "E-Wallet"]
     if col_name == "Is Active?":
         return ["Yes", "No"]
+    if col_name == "Fuel Type":
+        return ["Gasoline", "Diesel", "Electric", "Hybrid"]
+    if col_name == "Transmission":
+        return ["Automatic", "Manual", "CVT"]
     
     conn = sqlite3.connect(db_path)
     cursor = conn.cursor()
